@@ -1,37 +1,46 @@
-# ========== database/mongo_db.py ==========
 import logging
 from datetime import datetime, date
 from pymongo import MongoClient, errors
 from pymongo.collection import Collection
-from database.mongo_db import database
-db = Database(uri=MONGO_URI, db_name=DB_NAME)
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+DB_NAME = os.getenv("DB_NAME", "cc_sniper")
 
 class Database:
-    def __init__(self, uri: str, db_name: str):
+    def __init__(self, uri: str = MONGO_URI, db_name: str = DB_NAME):
         self.uri = uri
         self.db_name = db_name
         self.client = None
-        self.db = None
-        self.cards = None
-        self.skipped = None
+        self.db_conn = None
+        self.cards: Collection = None
+        self.skipped: Collection = None
         self._connect()
 
     def _connect(self):
         try:
-            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
+            self.client = MongoClient(
+                self.uri,
+                serverSelectionTimeoutMS=5000
+            )
             self.client.server_info()
-            self.db = self.client[self.db_name]  # ← Use self.db_name
-            self.cards = self.db["cards"]
-            self.skipped = self.db["skipped"]
+            self.db_conn = self.client[self.db_name]
+            self.cards = self.db_conn["cards"]
+            self.skipped = self.db_conn["skipped"]
             self.cards.create_index("card", unique=True)
             self.skipped.create_index("card")
             logging.info("✅ MongoDB connected!")
         except errors.ServerSelectionTimeoutError:
             logging.critical("❌ MongoDB connection FAILED!")
             raise
+        except Exception as e:
+            logging.critical(f"❌ MongoDB error: {e}")
+            raise
+
     def is_duplicate(self, card: str) -> bool:
-        """Check if card already exists."""
         try:
             return self.cards.find_one({"card": card}) is not None
         except Exception as e:
@@ -47,7 +56,6 @@ class Database:
         category: str,
         is_old: bool
     ):
-        """Save card to database."""
         try:
             self.cards.update_one(
                 {"card": card},
@@ -77,7 +85,6 @@ class Database:
         message_id: int,
         category: str
     ):
-        """Save skipped card."""
         try:
             self.skipped.insert_one({
                 "card": card,
@@ -91,7 +98,6 @@ class Database:
             logging.error(f"❌ save_skipped error: {e}")
 
     def get_stats(self) -> dict:
-        """Get overall statistics."""
         try:
             total = self.cards.count_documents({})
             approved = self.cards.count_documents({"category": "live"})
@@ -118,30 +124,38 @@ class Database:
             }
 
     def get_today_stats(self) -> dict:
-        """Get today's statistics."""
         try:
             today_str = str(date.today())
-            forwarded = self.cards.count_documents({"date_str": today_str})
-            pending = self.skipped.count_documents({"date": {
-                "$gte": datetime.utcnow().replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
-            }})
+            forwarded = self.cards.count_documents(
+                {"date_str": today_str}
+            )
+            pending = self.skipped.count_documents({
+                "date": {
+                    "$gte": datetime.utcnow().replace(
+                        hour=0,
+                        minute=0,
+                        second=0,
+                        microsecond=0
+                    )
+                }
+            })
             return {
                 "forwarded": forwarded,
                 "pending": pending
             }
         except Exception as e:
             logging.error(f"❌ get_today_stats error: {e}")
-            return {"forwarded": 0, "pending": 0}
+            return {
+                "forwarded": 0,
+                "pending": 0
+            }
 
     def get_skipped_cards(self) -> list:
-        """Get all skipped cards."""
         try:
             return list(self.skipped.find({}, {"_id": 0}))
         except Exception as e:
             logging.error(f"❌ get_skipped_cards error: {e}")
             return []
 
-# Singleton instance
+# Singleton
 db = Database()
