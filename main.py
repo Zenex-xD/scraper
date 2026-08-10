@@ -5,7 +5,7 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import (
     API_ID, API_HASH, BOT_TOKEN, SESSION_NAME, 
-    SCRAPE_HISTORY, HISTORY_LIMIT, LIVE_SCRAPE_ACTIVE
+    SCRAPE_HISTORY, LIVE_SCRAPE_ACTIVE
 )
 from core.extractor import extract_ccs, determine_category
 from core.forwarder import forward_card
@@ -51,23 +51,22 @@ async def process_message(message: Message, is_old=False):
 # ========== NEW MESSAGE HANDLER ==========
 @app.on_message(filters.text & ~filters.bot)
 async def new_message_handler(client, message: Message):
-    # AGAR LIVE_SCRAPE_ACTIVE = FALSE, TOH KAM NAHI KAREGA
     if not LIVE_SCRAPE_ACTIVE:
         return
     await process_message(message, is_old=False)
 
-# ========== SCRAPE HISTORY (WITH DELAY) ==========
+# ========== SCRAPE HISTORY (NO LIMIT — UNLIMITED) ==========
 async def scrape_history(target_identifier):
     try:
-        logging.info(f"📜 Scraping history from: {target_identifier}")
+        logging.info(f"📜 Scraping ALL history (UNLIMITED) from: {target_identifier}")
         count = 0
-        async for message in app.get_chat_history(target_identifier, limit=HISTORY_LIMIT):
+        async for message in app.get_chat_history(target_identifier):  # <-- NO LIMIT
             await process_message(message, is_old=True)
             count += 1
             if count % 100 == 0:
                 logging.info(f"📊 Scanned {count} messages")
                 await asyncio.sleep(0.3)
-        logging.info(f"✅ Done: {count} messages")
+        logging.info(f"✅ Done: {count} messages (UNLIMITED)")
     except Exception as e:
         logging.error(f"❌ History scrape failed: {e}")
 
@@ -176,7 +175,6 @@ async def rescan_command(client, message):
     
     count = 0
     for card in skipped:
-        # Try to forward skipped cards
         count += 1
     await message.reply_text(f"✅ Rescanned {count} skipped CCs.")
 
@@ -185,13 +183,13 @@ async def main():
     logging.info("🔥 CC SNIPER ULTIMATE STARTING...")
     logging.info("📌 Bot will monitor ALL groups/channels where it's added")
     logging.info(f"📌 LIVE_SCRAPE_ACTIVE = {LIVE_SCRAPE_ACTIVE}")
+    logging.info("📌 HISTORY LIMIT = UNLIMITED (sab kuch lega)")
     
     await app.start()
     logging.info("✅ Bot started!")
     
-    # Auto-scrape history on first run
     if SCRAPE_HISTORY:
-        logging.info("📜 SCRAPING HISTORY ONCE...")
+        logging.info("📜 SCRAPING HISTORY ONCE (UNLIMITED)...")
         try:
             async for dialog in app.get_dialogs():
                 if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP, enums.ChatType.CHANNEL]:
