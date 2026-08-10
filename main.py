@@ -26,8 +26,6 @@ logging.basicConfig(
 )
 
 # ========== CLIENTS ==========
-# User = Scrape + Forward
-# Bot = Sirf Control
 user = Client(
     "user_session",
     api_id=API_ID,
@@ -72,7 +70,7 @@ async def process_message(message: Message, is_old: bool = False):
 
         for card in cards:
             category = determine_category(message.text)
-            # ✅ USER forward karega
+            # ✅ User scrape + forward karega
             await forward_card(
                 user,
                 card,
@@ -90,15 +88,9 @@ async def process_message(message: Message, is_old: bool = False):
         logging.error(f"❌ process_message error: {e}")
 
 # ========== SCRAPE HISTORY ==========
+# ✅ Sirf /fetch button se chalega
 async def scrape_all_history():
     logging.info("📜 SCRAPING ALL HISTORY STARTED...")
-
-    try:
-        if not user.is_connected:
-            await user.start()
-    except Exception as e:
-        logging.error(f"❌ User client connection failed: {e}")
-        return
 
     total_scanned = 0
 
@@ -128,11 +120,13 @@ async def scrape_all_history():
                         count += 1
 
                         if count % 50 == 0:
-                            logging.info(f"📊 Scanned {count} msgs in {source}")
+                            logging.info(
+                                f"📊 Scanned {count} msgs in {source}"
+                            )
                             await asyncio.sleep(1)
 
                     except FloodWait as e:
-                        logging.warning(f"⏳ FloodWait: sleeping {e.value}s")
+                        logging.warning(f"⏳ FloodWait: {e.value}s")
                         await asyncio.sleep(e.value)
                     except Exception as e:
                         logging.error(f"❌ Message error: {e}")
@@ -145,7 +139,7 @@ async def scrape_all_history():
                 logging.error(f"❌ Failed to scrape {source}: {e}")
                 continue
 
-            logging.info(f"✅ Done: {count} messages from {source}")
+            logging.info(f"✅ Done: {count} msgs from {source}")
             total_scanned += count
             await asyncio.sleep(2)
 
@@ -155,10 +149,11 @@ async def scrape_all_history():
     logging.info(f"✅ TOTAL SCANNED: {total_scanned} messages")
 
 # ========== LIVE SCRAPE ==========
-# ✅ User sunta hai - User forward karta hai
+# ✅ Sirf /scrape start karne ke baad naye messages
 @user.on_message(filters.text)
 async def live_handler(client: Client, message: Message):
     try:
+        # ✅ Sirf tab forward karo jab LIVE_SCRAPE_ACTIVE = True
         if config.LIVE_SCRAPE_ACTIVE:
             await process_message(message, is_old=False)
     except Exception as e:
@@ -171,21 +166,44 @@ async def start_cmd(client: Client, message: Message):
         status = "🟢 ACTIVE" if config.LIVE_SCRAPE_ACTIVE else "🔴 INACTIVE"
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔥 START SCRAPE", callback_data="scrape_start")],
-            [InlineKeyboardButton("🛑 STOP SCRAPE", callback_data="scrape_stop")],
-            [InlineKeyboardButton("🛠 TOOLS / STATS", callback_data="tools")],
-            [InlineKeyboardButton("📜 OLD SCRAPE", callback_data="fetch")],
-            [InlineKeyboardButton("📊 STATUS", callback_data="status")]
+            [
+                InlineKeyboardButton(
+                    "🔥 START LIVE SCRAPE",
+                    callback_data="scrape_start"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🛑 STOP LIVE SCRAPE",
+                    callback_data="scrape_stop"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📜 FETCH OLD",
+                    callback_data="fetch"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🛠 STATS",
+                    callback_data="tools"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📊 STATUS",
+                    callback_data="status"
+                )
+            ]
         ])
 
         await message.reply_text(
             f"🤖 <b>CC SNIPER ULTIMATE</b>\n\n"
-            f"┌ Status: <b>{status}</b>\n"
-            f"├ Live Group: <code>{LIVE_GROUP}</code>\n"
-            f"├ Approved Group: <code>{CHARGED_GROUP}</code>\n"
-            f"├ Fetch Group: <code>{FETCH_GROUP}</code>\n"
-            f"└ Log Channel: <code>{LOG_CHANNEL}</code>\n\n"
-            f"👇 Select an option below:",
+            f"┌ Status: <b>{status}</b>\n\n"
+            f"🔥 START = Naye messages se CC lega\n"
+            f"📜 FETCH OLD = Purane messages se CC lega\n\n"
+            f"👇 Select karo:",
             reply_markup=keyboard,
             parse_mode=enums.ParseMode.HTML
         )
@@ -203,7 +221,7 @@ async def cb_handler(client: Client, query):
 
         data = query.data
 
-        # ── START SCRAPE ──
+        # ── START LIVE SCRAPE ──
         if data == "scrape_start":
             if config.LIVE_SCRAPE_ACTIVE:
                 await query.answer("⚠️ Already Active!", show_alert=True)
@@ -211,12 +229,13 @@ async def cb_handler(client: Client, query):
             config.LIVE_SCRAPE_ACTIVE = True
             await query.answer("✅ LIVE SCRAPING STARTED!")
             await query.message.reply_text(
-                "🟢 <b>LIVE SCRAPING ACTIVE</b>\n"
-                "User ab sare groups se CC scrape karega!",
+                "🟢 <b>LIVE SCRAPING ACTIVE!</b>\n\n"
+                "Ab se sirf NAYE messages ka CC forward hoga!\n"
+                "Purane ke liye FETCH OLD use karo.",
                 parse_mode=enums.ParseMode.HTML
             )
 
-        # ── STOP SCRAPE ──
+        # ── STOP LIVE SCRAPE ──
         elif data == "scrape_stop":
             if not config.LIVE_SCRAPE_ACTIVE:
                 await query.answer("⚠️ Already Stopped!", show_alert=True)
@@ -228,12 +247,30 @@ async def cb_handler(client: Client, query):
                 parse_mode=enums.ParseMode.HTML
             )
 
+        # ── FETCH OLD ──
+        elif data == "fetch":
+            await query.answer("📜 FETCH OLD STARTED!")
+            msg = await query.message.reply_text(
+                "📜 <b>Purane messages scan ho rahe hain...</b>\n"
+                "Ye background me chalega!\n"
+                "FETCH_GROUP me forward hoga!",
+                parse_mode=enums.ParseMode.HTML
+            )
+            # ✅ Background me chalao
+            asyncio.create_task(scrape_all_history())
+            await msg.edit_text(
+                "✅ <b>FETCH OLD RUNNING!</b>\n\n"
+                "Purane CC FETCH_GROUP me aayenge!\n"
+                "Live CC ke liye START LIVE SCRAPE karo!",
+                parse_mode=enums.ParseMode.HTML
+            )
+
         # ── TOOLS ──
         elif data == "tools":
             stats = db.get_stats() or {}
             today = db.get_today_stats() or {}
             text = (
-                "🛠 <b>TOOLS & STATS</b>\n\n"
+                "🛠 <b>STATS</b>\n\n"
                 "📊 <b>Overall:</b>\n"
                 f"├ Total: <code>{stats.get('total', 0)}</code>\n"
                 f"├ Approved: <code>{stats.get('approved', 0)}</code>\n"
@@ -246,21 +283,6 @@ async def cb_handler(client: Client, query):
             await query.answer()
             await query.message.reply_text(
                 text,
-                parse_mode=enums.ParseMode.HTML
-            )
-
-        # ── OLD SCRAPE ──
-        elif data == "fetch":
-            await query.answer("📜 OLD SCRAPE STARTED!")
-            msg = await query.message.reply_text(
-                "📜 <b>Scraping old messages in background...</b>",
-                parse_mode=enums.ParseMode.HTML
-            )
-            # Background me chalao - Bot block na ho
-            asyncio.create_task(scrape_all_history())
-            await msg.edit_text(
-                "✅ <b>OLD SCRAPE RUNNING IN BACKGROUND!</b>\n"
-                "Logs check karo progress ke liye.",
                 parse_mode=enums.ParseMode.HTML
             )
 
@@ -282,12 +304,14 @@ async def cb_handler(client: Client, query):
     except Exception as e:
         logging.error(f"❌ cb_handler error: {e}")
         try:
-            await query.answer("❌ Error occurred!", show_alert=True)
+            await query.answer("❌ Error!", show_alert=True)
         except:
             pass
 
 # ========== STATUS COMMAND ==========
-@bot.on_message(filters.command("status") & filters.private & admin_filter)
+@bot.on_message(
+    filters.command("status") & filters.private & admin_filter
+)
 async def status_cmd(client: Client, message: Message):
     try:
         stats = db.get_stats() or {}
@@ -305,8 +329,10 @@ async def status_cmd(client: Client, message: Message):
     except Exception as e:
         logging.error(f"❌ status_cmd error: {e}")
 
-# ========== SCAN TODAY COMMAND ==========
-@bot.on_message(filters.command("scan_today") & filters.private & admin_filter)
+# ========== SCAN TODAY ==========
+@bot.on_message(
+    filters.command("scan_today") & filters.private & admin_filter
+)
 async def scan_today_cmd(client: Client, message: Message):
     try:
         today = db.get_today_stats() or {}
@@ -319,8 +345,10 @@ async def scan_today_cmd(client: Client, message: Message):
     except Exception as e:
         logging.error(f"❌ scan_today_cmd error: {e}")
 
-# ========== RESCAN COMMAND ==========
-@bot.on_message(filters.command("rescan") & filters.private & admin_filter)
+# ========== RESCAN ==========
+@bot.on_message(
+    filters.command("rescan") & filters.private & admin_filter
+)
 async def rescan_cmd(client: Client, message: Message):
     try:
         msg = await message.reply_text(
@@ -337,14 +365,14 @@ async def rescan_cmd(client: Client, message: Message):
         else:
             await msg.edit_text(
                 f"⚠️ <b>Found {len(skipped)} skipped CCs</b>\n"
-                f"Processing now...",
+                "Processing...",
                 parse_mode=enums.ParseMode.HTML
             )
             success = 0
             failed = 0
+
             for card_data in skipped:
                 try:
-                    # ✅ User se rescan bhi
                     await forward_card(
                         user,
                         card_data.get("card"),
@@ -357,7 +385,7 @@ async def rescan_cmd(client: Client, message: Message):
                     success += 1
                     await asyncio.sleep(0.5)
                 except Exception as e:
-                    logging.error(f"❌ Rescan card error: {e}")
+                    logging.error(f"❌ Rescan error: {e}")
                     failed += 1
 
             await msg.edit_text(
@@ -369,82 +397,79 @@ async def rescan_cmd(client: Client, message: Message):
     except Exception as e:
         logging.error(f"❌ rescan_cmd error: {e}")
 
-# ========== HELP COMMAND ==========
-@bot.on_message(filters.command("help") & filters.private & admin_filter)
+# ========== HELP ==========
+@bot.on_message(
+    filters.command("help") & filters.private & admin_filter
+)
 async def help_cmd(client: Client, message: Message):
     await message.reply_text(
         "📖 <b>COMMANDS</b>\n\n"
         "/start — Main menu\n"
-        "/status — Bot & scraper status\n"
-        "/scan_today — Today's stats\n"
-        "/rescan — Reprocess skipped CCs\n"
-        "/help — This message",
+        "/status — Scraper status\n"
+        "/scan_today — Aaj ke stats\n"
+        "/rescan — Skipped CCs retry\n"
+        "/help — Ye message",
         parse_mode=enums.ParseMode.HTML
     )
 
 # ========== MAIN ==========
 async def main():
-    logging.info("🔥 CC SNIPER ULTIMATE STARTING...")
+    logging.info("🔥 CC SNIPER STARTING...")
 
-    # ── Start User Client ──
+    # Start User
     try:
         await user.start()
         me = await user.get_me()
-        logging.info(f"✅ User started: {me.first_name} (@{me.username})")
+        logging.info(f"✅ User: {me.first_name} (@{me.username})")
     except Exception as e:
-        logging.critical(f"❌ User client FAILED: {e}")
+        logging.critical(f"❌ User FAILED: {e}")
         return
 
-    # ── Start Bot Client ──
+    # Start Bot
     try:
         await bot.start()
         bot_me = await bot.get_me()
-        logging.info(f"✅ Bot started: {bot_me.first_name} (@{bot_me.username})")
+        logging.info(f"✅ Bot: {bot_me.first_name} (@{bot_me.username})")
     except Exception as e:
-        logging.critical(f"❌ Bot client FAILED: {e}")
+        logging.critical(f"❌ Bot FAILED: {e}")
         await user.stop()
         return
 
-    # ── Optional History Scrape on Startup ──
-    if config.SCRAPE_HISTORY:
-        logging.info("📜 Starting history scrape on startup...")
-        asyncio.create_task(scrape_all_history())
-
-    logging.info("🤖 CC SNIPER IS LIVE!")
+    logging.info("━━━━━━━━━━━━━━━━━━━━━━━━")
     logging.info("✅ User = Scrape + Forward")
-    logging.info("✅ Bot = Control Only")
+    logging.info("✅ Bot  = Sirf Control")
+    logging.info("✅ /start se control karo")
+    logging.info("━━━━━━━━━━━━━━━━━━━━━━━━")
 
-    # ── Graceful Shutdown ──
+    # Graceful Shutdown
     stop_event = asyncio.Event()
     loop = asyncio.get_event_loop()
 
     def shutdown():
-        logging.info("🛑 Shutdown signal received...")
+        logging.info("🛑 Shutdown...")
         stop_event.set()
 
     try:
         loop.add_signal_handler(signal.SIGINT, shutdown)
         loop.add_signal_handler(signal.SIGTERM, shutdown)
     except NotImplementedError:
-        pass  # Windows support
+        pass
 
     await stop_event.wait()
 
-    # ── Cleanup ──
-    logging.info("🔄 Stopping clients...")
     try:
         await user.stop()
         logging.info("✅ User stopped")
     except Exception as e:
-        logging.error(f"❌ User stop error: {e}")
+        logging.error(f"❌ {e}")
 
     try:
         await bot.stop()
         logging.info("✅ Bot stopped")
     except Exception as e:
-        logging.error(f"❌ Bot stop error: {e}")
+        logging.error(f"❌ {e}")
 
-    logging.info("✅ SHUTDOWN COMPLETE")
+    logging.info("✅ DONE")
 
 if __name__ == "__main__":
     asyncio.run(main())
