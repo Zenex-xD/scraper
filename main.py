@@ -1,11 +1,15 @@
 import asyncio
 import logging
+import base64
+import os
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import (
-    API_ID, API_HASH, BOT_TOKEN, SESSION_NAME, 
-    SCRAPE_HISTORY, LIVE_SCRAPE_ACTIVE
+    API_ID, API_HASH, BOT_TOKEN, USER_SESSION,
+    LIVE_GROUP, CHARGED_GROUP, LOG_CHANNEL, FETCH_GROUP,
+    MONGO_URI, DB_NAME, COLLECTION_NAME,
+    APPROVED_KEYWORDS, SCRAPE_HISTORY, LIVE_SCRAPE_ACTIVE
 )
 from core.extractor import extract_ccs, determine_category
 from core.forwarder import forward_card
@@ -13,15 +17,24 @@ from database.mongo_db import db
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-app = Client(
-    SESSION_NAME,
+# ========== USER CLIENT (Scrape + Forward) ==========
+user_app = Client(
+    USER_SESSION,
+    api_id=API_ID,
+    api_hash=API_HASH,
+    parse_mode=enums.ParseMode.HTML
+)
+
+# ========== BOT CLIENT (Commands + Status Only) ==========
+bot_app = Client(
+    "bot_session",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
     parse_mode=enums.ParseMode.HTML
 )
 
-# ========== PROCESS MESSAGE ==========
+# ========== PROCESS MESSAGE (User Account Se) ==========
 async def process_message(message: Message, is_old=False):
     if not message.text:
         return
@@ -39,7 +52,7 @@ async def process_message(message: Message, is_old=False):
     for card in cards:
         category = determine_category(message_text)
         await forward_card(
-            app=app,
+            app=user_app,  # User account se forward
             card_data=card,
             source=source,
             chat_id=message.chat.id,
@@ -48,30 +61,31 @@ async def process_message(message: Message, is_old=False):
             is_old=is_old
         )
 
-# ========== NEW MESSAGE HANDLER ==========
-@app.on_message(filters.text & ~filters.bot)
-async def new_message_handler(client, message: Message):
-    if not LIVE_SCRAPE_ACTIVE:
-        return
-    await process_message(message, is_old=False)
-
-# ========== SCRAPE HISTORY (NO LIMIT — UNLIMITED) ==========
-async def scrape_history(target_identifier):
+# ========== SCRAPE HISTORY (User Account Se) ==========
+async def scrape_all_history():
+    logging.info("📜 SCRAPING ALL HISTORY...")
+    count_total = 0
     try:
-        logging.info(f"📜 Scraping ALL history (UNLIMITED) from: {target_identifier}")
-        count = 0
-        async for message in app.get_chat_history(target_identifier):  # <-- NO LIMIT
-            await process_message(message, is_old=True)
-            count += 1
-            if count % 100 == 0:
-                logging.info(f"📊 Scanned {count} messages")
-                await asyncio.sleep(0.3)
-        logging.info(f"✅ Done: {count} messages (UNLIMITED)")
+        async for dialog in user_app.get_dialogs():
+            chat = dialog.chat
+            if chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP, enums.ChatType.CHANNEL]:
+                source = f"@{chat.username}" if chat.username else f"group_{chat.id}"
+                logging.info(f"📜 Scraping: {source}")
+                count = 0
+                async for message in user_app.get_chat_history(chat.id):
+                    await process_message(message, is_old=True)
+                    count += 1
+                    if count % 100 == 0:
+                        logging.info(f"📊 Scanned {count} messages")
+                        await asyncio.sleep(0.3)
+                logging.info(f"✅ Done: {count} messages from {source}")
+                count_total += count
     except Exception as e:
         logging.error(f"❌ History scrape failed: {e}")
+    logging.info(f"✅ TOTAL: {count_total} messages scanned")
 
-# ========== /start ==========
-@app.on_message(filters.command("start") & filters.private)
+# ========== BOT COMMANDS ==========
+@bot_app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔥 SCRAPE", callback_data="scrape_start")],
@@ -82,8 +96,6 @@ async def start_command(client, message):
     await message.reply_text(
         f"🤖 <b>CC SNIPER ULTIMATE</b>\n\n"
         f"Status: {status}\n\n"
-        "Bot is running in ALL groups/channels where it's added.\n"
-        "Har jagah se CC uthayega aur forward karega.\n\n"
         "📌 LIVE CC → @live_group\n"
         "📌 APPROVED CC → @charged_group\n"
         "📌 OLD SCRAPE → @fetch_group\n"
@@ -93,18 +105,17 @@ async def start_command(client, message):
         parse_mode=enums.ParseMode.HTML
     )
 
-# ========== BUTTON CALLBACKS ==========
-@app.on_callback_query()
+@bot_app.on_callback_query()
 async def button_callback(client, callback_query):
     global LIVE_SCRAPE_ACTIVE
     data = callback_query.data
     
     if data == "scrape_start":
         LIVE_SCRAPE_ACTIVE = True
-        await callback_query.answer("✅ LIVE SCRAPING STARTED! Monitoring 24/7...")
+        await callback_query.answer("✅ LIVE SCRAPING STARTED!")
         await callback_query.message.reply_text(
             "🟢 <b>LIVE SCRAPING ACTIVE</b>\n\n"
-            "Bot ab har group/channel se CC uthayega aur forward karega.\n"
+            "User account ab har group/channel se CC uthayega.\n"
             "Jab tak bot running hai, kaam karega."
         )
     
@@ -134,17 +145,10 @@ async def button_callback(client, callback_query):
     elif data == "fetch":
         await callback_query.answer("📜 OLD SCRAPE STARTED!")
         msg = await callback_query.message.reply_text("📜 Scraping old messages from all groups...")
-        
-        try:
-            async for dialog in app.get_dialogs():
-                if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP, enums.ChatType.CHANNEL]:
-                    await scrape_history(dialog.chat.id)
-            await msg.edit_text("✅ OLD SCRAPE COMPLETE! Sab purani CC forward ho gayi.")
-        except Exception as e:
-            await msg.edit_text(f"❌ Error: {e}")
+        await scrape_all_history()
+        await msg.edit_text("✅ OLD SCRAPE COMPLETE! Sab purani CC forward ho gayi.")
 
-# ========== COMMANDS ==========
-@app.on_message(filters.command("scan_today") & filters.private)
+@bot_app.on_message(filters.command("scan_today") & filters.private)
 async def scan_today(client, message):
     stats = db.get_today_stats()
     await message.reply_text(
@@ -153,7 +157,7 @@ async def scan_today(client, message):
         f"⏳ Pending: {stats['pending']}"
     )
 
-@app.on_message(filters.command("status") & filters.private)
+@bot_app.on_message(filters.command("status") & filters.private)
 async def status_command(client, message):
     stats = db.get_stats()
     await message.reply_text(
@@ -165,41 +169,40 @@ async def status_command(client, message):
         f"Today: {stats['today']}"
     )
 
-@app.on_message(filters.command("rescan") & filters.private)
+@bot_app.on_message(filters.command("rescan") & filters.private)
 async def rescan_command(client, message):
     await message.reply_text("🔄 Checking for skipped CCs...")
     skipped = db.get_skipped_cards()
     if not skipped:
         await message.reply_text("✅ No skipped CCs found. Sab forward ho gaye.")
         return
-    
-    count = 0
-    for card in skipped:
-        count += 1
-    await message.reply_text(f"✅ Rescanned {count} skipped CCs.")
+    await message.reply_text(f"✅ Found {len(skipped)} skipped CCs.")
+
+# ========== LIVE SCRAPE (User Account) ==========
+@user_app.on_message(filters.text & ~filters.bot)
+async def live_scrape_handler(client, message: Message):
+    if not LIVE_SCRAPE_ACTIVE:
+        return
+    await process_message(message, is_old=False)
 
 # ========== MAIN ==========
 async def main():
     logging.info("🔥 CC SNIPER ULTIMATE STARTING...")
-    logging.info("📌 Bot will monitor ALL groups/channels where it's added")
-    logging.info(f"📌 LIVE_SCRAPE_ACTIVE = {LIVE_SCRAPE_ACTIVE}")
-    logging.info("📌 HISTORY LIMIT = UNLIMITED (sab kuch lega)")
     
-    await app.start()
-    logging.info("✅ Bot started!")
+    # Start both clients
+    await user_app.start()
+    logging.info("✅ User account started!")
+    
+    await bot_app.start()
+    logging.info("✅ Bot account started!")
     
     if SCRAPE_HISTORY:
-        logging.info("📜 SCRAPING HISTORY ONCE (UNLIMITED)...")
-        try:
-            async for dialog in app.get_dialogs():
-                if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP, enums.ChatType.CHANNEL]:
-                    await scrape_history(dialog.chat.id)
-        except Exception as e:
-            logging.error(f"History scrape error: {e}")
+        logging.info("📜 SCRAPING HISTORY ONCE...")
+        await scrape_all_history()
         logging.info("✅ HISTORY SCRAPE COMPLETE")
     
-    logging.info("🤖 Bot is LIVE! Waiting for SCRAPE button...")
+    logging.info("🤖 Bot is LIVE! Commands available via bot.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    app.run(main())
+    asyncio.run(main())
