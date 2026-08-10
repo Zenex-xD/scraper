@@ -12,7 +12,7 @@ from config import (
     APPROVED_KEYWORDS, SCRAPE_HISTORY, ADMIN_IDS,
     MONGO_URI, DB_NAME  # ← Add these two
 )
-)
+
 from core.extractor import extract_ccs, determine_category
 from core.forwarder import forward_card
 from database.mongo_db import db
