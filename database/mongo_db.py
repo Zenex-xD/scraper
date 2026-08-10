@@ -4,36 +4,32 @@ from datetime import datetime, date
 from pymongo import MongoClient, errors
 from pymongo.collection import Collection
 from database.mongo_db import Database
-db = Database(uri=MONGO_URI, db_name=DB_NAME)
+db = Database(uri=MONGO_URI, db_name=
 
 
 class Database:
-    def __init__(self):
+    def __init__(self, uri: str, db_name: str):
+        self.uri = uri
+        self.db_name = db_name
         self.client = None
         self.db = None
-        self.cards: Collection = None
-        self.skipped: Collection = None
+        self.cards = None
+        self.skipped = None
         self._connect()
 
     def _connect(self):
-        """Connect to MongoDB."""
         try:
-            self.client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-            self.client.server_info()  # Test connection
-            self.db = self.client[DB_NAME]
+            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
+            self.client.server_info()
+            self.db = self.client[self.db_name]  # ← Use self.db_name
             self.cards = self.db["cards"]
             self.skipped = self.db["skipped"]
-
-            # Indexes
             self.cards.create_index("card", unique=True)
             self.skipped.create_index("card")
-
             logging.info("✅ MongoDB connected!")
-
         except errors.ServerSelectionTimeoutError:
             logging.critical("❌ MongoDB connection FAILED!")
             raise
-
     def is_duplicate(self, card: str) -> bool:
         """Check if card already exists."""
         try:
