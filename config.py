@@ -1,25 +1,20 @@
-import os
+# ========== config.py ==========
 
-# ========== BOT ACCOUNT (Commands + Status) ==========
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")  # Bot token for commands only
+# Telegram API Credentials
+API_ID = 123456               # Your API ID from my.telegram.org
+API_HASH = "your_api_hash"    # Your API Hash
+BOT_TOKEN = "your_bot_token"  # From @BotFather
+USER_SESSION = "your_session_string"  # From Pyrogram session
 
-# ========== USER ACCOUNT (Scrape + Forward) ==========
-API_ID = int(os.getenv("API_ID", 0))
-API_HASH = os.getenv("API_HASH", "")
-USER_SESSION = os.getenv("USER_SESSION", "user_session")  # User session for scraping
+# Group / Channel IDs or Usernames
+LIVE_GROUP = -1001234567890    # Where live CCs are posted
+CHARGED_GROUP = -1009876543210 # Where approved CCs go
+LOG_CHANNEL = -1001111111111   # Log channel
+FETCH_GROUP = -1002222222222   # Group to listen for live scrape
 
-# ========== FORWARD CHANNELS ==========
-LIVE_GROUP = os.getenv("LIVE_GROUP", "")
-CHARGED_GROUP = os.getenv("CHARGED_GROUP", "")
-LOG_CHANNEL = os.getenv("LOG_CHANNEL", "")
-FETCH_GROUP = os.getenv("FETCH_GROUP", "")
-
-# ========== MONGODB ==========
-MONGO_URI = os.getenv("MONGO_URI", "")
-DB_NAME = "cc_sniper"
-COLLECTION_NAME = "cards"
-
-# ========== KEYWORDS FOR APPROVED ==========
+# Admin User IDs (list of integers)
+ADMIN_IDS = [111111111, 222222222
+             
 APPROVED_KEYWORDS = [
     "✅", "APPROVED", "Card declined", "Response:", "RISK_DISALLOWED",
     "Info:", "Issuer:", "Country:", "Checked by", "BOT by",
