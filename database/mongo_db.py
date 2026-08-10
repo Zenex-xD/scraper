@@ -4,7 +4,7 @@ from datetime import datetime, date
 from pymongo import MongoClient, errors
 from pymongo.collection import Collection
 from database.mongo_db import Database
-db = Database(uri=MONGO_URI, db_name=
+db = Database(uri=MONGO_URI, db_name=DB_NAME)
 
 
 class Database:
