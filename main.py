@@ -9,7 +9,9 @@ import config
 from config import (
     API_ID, API_HASH, BOT_TOKEN, USER_SESSION,
     LIVE_GROUP, CHARGED_GROUP, LOG_CHANNEL, FETCH_GROUP,
-    APPROVED_KEYWORDS, SCRAPE_HISTORY, ADMIN_IDS
+    APPROVED_KEYWORDS, SCRAPE_HISTORY, ADMIN_IDS,
+    MONGO_URI, DB_NAME  # ← Add these two
+)
 )
 from core.extractor import extract_ccs, determine_category
 from core.forwarder import forward_card
