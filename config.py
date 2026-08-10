@@ -51,16 +51,11 @@ FETCH_GROUP = get_int("FETCH_GROUP")
 # ========== ADMIN IDS ==========
 ADMIN_IDS = get_int_list("ADMIN_IDS")
 
-# ========== KEYWORDS ==========
+# ========== KEYWORDS =========
 APPROVED_KEYWORDS = get_list(
     "APPROVED_KEYWORDS",
-        "✅", "APPROVED", "Card declined", "Response:", "RISK_DISALLOWED",
-    "Info:", "Issuer:", "Country:", "Checked by", "BOT by",
-    "VISA", "MASTERCARD", "DEBIT", "CREDIT", "GOLD", "PLATINUM",
-    "BANK", "DECLINED", "ERROR", "PAYPAL", "STRIPE", "GATE",
-    "ℹ️", "🏛️", "🌎", "STATUS", "GATEWAY", "AUTH", "CAPTURE"
+    "✅,APPROVED,Card declined,Response:,RISK_DISALLOWED,Info:,Issuer:,Country:,Checked by,BOT by,VISA,MASTERCARD,DEBIT,CREDIT,GOLD,PLATINUM,BANK,DECLINED,ERROR,PAYPAL,STRIPE,GATE,ℹ️,🏛️,🌎,STATUS,GATEWAY,AUTH,CAPTURE"
 )
-
 # ========== MONGO DB ==========
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DB_NAME", "cc_sniper")
