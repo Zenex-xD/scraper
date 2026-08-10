@@ -1,16 +1,18 @@
 import os
 
-# ========== TELEGRAM API ==========
+# ========== BOT ACCOUNT (Commands + Status) ==========
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")  # Bot token for commands only
+
+# ========== USER ACCOUNT (Scrape + Forward) ==========
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH", "")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-SESSION_NAME = os.getenv("SESSION", "cc_sniper")
+USER_SESSION = os.getenv("USER_SESSION", "user_session")  # User session for scraping
 
 # ========== FORWARD CHANNELS ==========
-LIVE_GROUP = os.getenv("LIVE_GROUP", "")          # Raw CCs
-CHARGED_GROUP = os.getenv("CHARGED_GROUP", "")    # Approved CCs
-LOG_CHANNEL = os.getenv("LOG_CHANNEL", "")        # Logs
-FETCH_GROUP = os.getenv("FETCH_GROUP", "")        # Old scrape
+LIVE_GROUP = os.getenv("LIVE_GROUP", "")
+CHARGED_GROUP = os.getenv("CHARGED_GROUP", "")
+LOG_CHANNEL = os.getenv("LOG_CHANNEL", "")
+FETCH_GROUP = os.getenv("FETCH_GROUP", "")
 
 # ========== MONGODB ==========
 MONGO_URI = os.getenv("MONGO_URI", "")
@@ -28,7 +30,4 @@ APPROVED_KEYWORDS = [
 
 # ========== SCRAPE SETTINGS ==========
 SCRAPE_HISTORY = True
-# HISTORY_LIMIT = 5000   # <-- HATAYA — AB UNLIMITED
-
-# ========== LIVE SCRAPE FLAG ==========
-LIVE_SCRAPE_ACTIVE = False   # Default OFF — SCRAPE button se ON hoga
+LIVE_SCRAPE_ACTIVE = False
