@@ -1,70 +1,93 @@
+# ========== core/extractor.py ==========
 import re
-from config import APPROVED_KEYWORDS
+import logging
 
-CC_PATTERNS = [
-    r'(\d{13,19})\s*[\|\/\\\-]\s*(\d{1,2})\s*[\|\/\\\-]\s*(\d{2,4})\s*[\|\/\\\-]\s*(\d{3,4})',
-    r'(\d{13,19})\s+(\d{1,2})\s+(\d{2,4})\s+(\d{3,4})',
-    r'(\d{13,19})\s*,\s*(\d{1,2})\s*,\s*(\d{2,4})\s*,\s*(\d{3,4})',
-    r'(\d{13,19})\s*\/\s*(\d{1,2})\s*\/\s*(\d{2,4})\s*\/\s*(\d{3,4})',
-    r'(\d{13,19})\s*[\|\/]\s*(\d{1,2})\s*[\|\/]\s*(\d{2,4})\s*[\|\/]\s*(\d{3,4})',
+# CC Pattern: 16 digits | exp month | exp year | cvv
+CC_PATTERN = re.compile(
+    r'\b(\d{15,16})[|/:,\s](\d{1,2})[|/:,\s](\d{2,4})[|/:,\s](\d{3,4})\b'
+)
+
+LIVE_KEYWORDS = [
+    "charged", "approved", "live", "hit", "success",
+    "✅", "charge", "captured", "auth"
 ]
 
-def extract_ccs(text):
-    if not text:
-        return []
-    cards = []
-    for pattern in CC_PATTERNS:
-        matches = re.finditer(pattern, text, re.IGNORECASE)
+DEAD_KEYWORDS = [
+    "dead", "declined", "failed", "invalid",
+    "❌", "error", "insufficient"
+]
+
+def extract_ccs(text: str) -> list:
+    """Extract all CC numbers from text."""
+    try:
+        if not text:
+            return []
+
+        cards = []
+        matches = CC_PATTERN.findall(text)
+
         for match in matches:
-            groups = match.groups()
-            if len(groups) == 4:
-                pan = groups[0].strip()
-                month = groups[1].strip().zfill(2)
-                year = groups[2].strip()
-                cvv = groups[3].strip()
-                if not (1 <= int(month) <= 12):
-                    continue
-                if len(year) == 2:
-                    year = "20" + year
-                if len(year) != 4:
-                    continue
-                if not luhn_check(pan):
-                    continue
-                cards.append({
-                    "pan": pan,
-                    "month": month,
-                    "year": year,
-                    "cvv": cvv,
-                    "full": f"{pan}|{month}|{year}|{cvv}"
-                })
-    return cards
+            number, month, year, cvv = match
 
-def luhn_check(card):
-    total = 0
-    reverse = card[::-1]
-    for i, digit in enumerate(reverse):
-        n = int(digit)
-        if i % 2 == 1:
-            n *= 2
-            if n > 9:
-                n -= 9
-        total += n
-    return total % 10 == 0
+            # Normalize year
+            if len(year) == 2:
+                year = f"20{year}"
 
-def is_approved_message(text):
-    if not text:
+            # Basic validation
+            if not _luhn_check(number):
+                logging.debug(f"Failed Luhn: {number}")
+                continue
+
+            month_int = int(month)
+            if not (1 <= month_int <= 12):
+                continue
+
+            card = f"{number}|{month}|{year}|{cvv}"
+            cards.append(card)
+
+        return list(set(cards))  # Remove duplicates
+
+    except Exception as e:
+        logging.error(f"❌ extract_ccs error: {e}")
+        return []
+
+def determine_category(text: str) -> str:
+    """Determine if card is live, dead, or unknown."""
+    try:
+        if not text:
+            return "unknown"
+
+        text_lower = text.lower()
+
+        for keyword in LIVE_KEYWORDS:
+            if keyword.lower() in text_lower:
+                return "live"
+
+        for keyword in DEAD_KEYWORDS:
+            if keyword.lower() in text_lower:
+                return "dead"
+
+        return "unknown"
+
+    except Exception as e:
+        logging.error(f"❌ determine_category error: {e}")
+        return "unknown"
+
+def _luhn_check(card_number: str) -> bool:
+    """Validate card number using Luhn algorithm."""
+    try:
+        digits = [int(d) for d in card_number]
+        digits.reverse()
+        total = 0
+
+        for i, digit in enumerate(digits):
+            if i % 2 == 1:
+                digit *= 2
+                if digit > 9:
+                    digit -= 9
+            total += digit
+
+        return total % 10 == 0
+
+    except Exception:
         return False
-    text_upper = text.upper()
-    for keyword in APPROVED_KEYWORDS:
-        if keyword.upper() in text_upper:
-            return True
-    if re.search(r'RESPONSE:|INFO:|ISSUER:|COUNTRY:|CHECKED BY|BOT BY|STATUS:|GATEWAY:', text_upper):
-        return True
-    if re.search(r'VISA|MASTERCARD|AMEX|DISCOVER|DEBIT|CREDIT|GOLD|PLATINUM|TITANIUM', text_upper):
-        return True
-    return False
-
-def determine_category(message_text):
-    if is_approved_message(message_text):
-        return "APPROVED"
-    return "LIVE"
