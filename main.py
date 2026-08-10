@@ -1,15 +1,12 @@
 import asyncio
 import logging
-import base64
-import os
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import (
     API_ID, API_HASH, BOT_TOKEN, USER_SESSION,
     LIVE_GROUP, CHARGED_GROUP, LOG_CHANNEL, FETCH_GROUP,
-    MONGO_URI, DB_NAME, COLLECTION_NAME,
-    APPROVED_KEYWORDS, SCRAPE_HISTORY, LIVE_SCRAPE_ACTIVE
+    MONGO_URI, APPROVED_KEYWORDS, SCRAPE_HISTORY, LIVE_SCRAPE_ACTIVE
 )
 from core.extractor import extract_ccs, determine_category
 from core.forwarder import forward_card
@@ -17,15 +14,16 @@ from database.mongo_db import db
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# ========== USER CLIENT (Scrape + Forward) ==========
+# ========== USER ACCOUNT (Scrape + Forward — Direct String Session) ==========
 user_app = Client(
-    USER_SESSION,
+    "user_session",
     api_id=API_ID,
     api_hash=API_HASH,
+    session_string=USER_SESSION,  # Direct string session — no file
     parse_mode=enums.ParseMode.HTML
 )
 
-# ========== BOT CLIENT (Commands + Status Only) ==========
+# ========== BOT ACCOUNT (Commands + Status Only) ==========
 bot_app = Client(
     "bot_session",
     api_id=API_ID,
@@ -34,7 +32,7 @@ bot_app = Client(
     parse_mode=enums.ParseMode.HTML
 )
 
-# ========== PROCESS MESSAGE (User Account Se) ==========
+# ========== PROCESS MESSAGE ==========
 async def process_message(message: Message, is_old=False):
     if not message.text:
         return
@@ -52,7 +50,7 @@ async def process_message(message: Message, is_old=False):
     for card in cards:
         category = determine_category(message_text)
         await forward_card(
-            app=user_app,  # User account se forward
+            app=user_app,
             card_data=card,
             source=source,
             chat_id=message.chat.id,
@@ -61,7 +59,7 @@ async def process_message(message: Message, is_old=False):
             is_old=is_old
         )
 
-# ========== SCRAPE HISTORY (User Account Se) ==========
+# ========== SCRAPE HISTORY ==========
 async def scrape_all_history():
     logging.info("📜 SCRAPING ALL HISTORY...")
     count_total = 0
@@ -83,6 +81,13 @@ async def scrape_all_history():
     except Exception as e:
         logging.error(f"❌ History scrape failed: {e}")
     logging.info(f"✅ TOTAL: {count_total} messages scanned")
+
+# ========== LIVE SCRAPE ==========
+@user_app.on_message(filters.text & ~filters.bot)
+async def live_scrape_handler(client, message: Message):
+    if not LIVE_SCRAPE_ACTIVE:
+        return
+    await process_message(message, is_old=False)
 
 # ========== BOT COMMANDS ==========
 @bot_app.on_message(filters.command("start") & filters.private)
@@ -178,18 +183,10 @@ async def rescan_command(client, message):
         return
     await message.reply_text(f"✅ Found {len(skipped)} skipped CCs.")
 
-# ========== LIVE SCRAPE (User Account) ==========
-@user_app.on_message(filters.text & ~filters.bot)
-async def live_scrape_handler(client, message: Message):
-    if not LIVE_SCRAPE_ACTIVE:
-        return
-    await process_message(message, is_old=False)
-
 # ========== MAIN ==========
 async def main():
     logging.info("🔥 CC SNIPER ULTIMATE STARTING...")
     
-    # Start both clients
     await user_app.start()
     logging.info("✅ User account started!")
     
