@@ -3,9 +3,9 @@ import logging
 from datetime import datetime, date
 from pymongo import MongoClient, errors
 from pymongo.collection import Collection
+from database.mongo_db import Database
+db = Database(uri=MONGO_URI, db_name=DB_NAME)
 
-MONGO_URI = "mongodb://localhost:27017"  # Change to your MongoDB URI
-DB_NAME = "cc_sniper"
 
 class Database:
     def __init__(self):
